@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>XAU/USD Cloud Paper Bot</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:1000px;margin:auto;padding:20px;background:#111;color:#eee}
+input,button{font-size:16px;padding:10px;border-radius:8px;border:1px solid #444}
+button{cursor:pointer}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.card{background:#1b1b1b;border:1px solid #333;border-radius:12px;padding:14px}
+.big{font-size:24px;font-weight:700}.muted{color:#aaa}
+img{max-width:100%;border:1px solid #333;border-radius:10px;margin-top:12px}
+pre{white-space:pre-wrap;word-break:break-word}
+</style>
+</head>
+<body>
+
+<h1>XAU/USD Cloud Paper Bot</h1>
+
+<p class="muted">
+This dashboard only monitors the cloud paper-trading browser.
+It does not place real orders.
+</p>
+
+<div>
+<input id="token" type="password" placeholder="Dashboard token">
+<button onclick="saveToken();refresh()">Connect</button>
+</div>
+
+<p id="status" class="muted">Not connected.</p>
+
+<div class="grid">
+
+<div class="card">
+<div class="muted">Bot</div>
+<div id="running" class="big">—</div>
+</div>
+
+<div class="card">
+<div class="muted">Balance</div>
+<div id="balance" class="big">—</div>
+</div>
+
+<div class="card">
+<div class="muted">P/L</div>
+<div id="pnl" class="big">—</div>
+</div>
+
+<div class="card">
+<div class="muted">Position</div>
+<div id="position" class="big">—</div>
+</div>
+
+<div class="card">
+<div class="muted">Trades</div>
+<div id="trades" class="big">—</div>
+</div>
+
+<div class="card">
+<div class="muted">Bias</div>
+<div id="bias" class="big">—</div>
+</div>
+
+</div>
+
+<h2>Cloud browser view</h2>
+<img id="shot" alt="Bot screenshot">
+
+<h2>Recent log</h2>
+<pre id="log">—</pre>
+
+<script>
+const tokenInput=document.getElementById("token");
+
+tokenInput.value=
+localStorage.getItem("xauusdDashboardToken")||"";
+
+function saveToken(){
+  localStorage.setItem(
+    "xauusdDashboardToken",
+    tokenInput.value
+  );
+}
+
+function esc(s){
+  return String(s??"").replace(
+    /[&<>"']/g,
+    c=>({
+      "&":"&amp;",
+      "<":"&lt;",
+      ">":"&gt;",
+      '"':"&quot;",
+      "'":"&#39;"
+    }[c])
+  );
+}
+
+async function refresh(){
+
+  const token=
+    localStorage.getItem("xauusdDashboardToken")
+    ||tokenInput.value;
+
+  if(!token)return;
+
+  try{
+
+    const r=await fetch(
+      "/api/state?token="
+      +encodeURIComponent(token)
+    );
+
+    if(!r.ok)
+      throw new Error("Authentication failed");
+
+    const s=await r.json();
+
+    document.getElementById("status").textContent=
+      "Connected • "
+      +new Date().toLocaleTimeString();
+
+    document.getElementById("running").textContent=
+      s.running?"RUNNING":"STOPPED";
+
+    document.getElementById("balance").textContent=
+      "$"+Number(s.balance).toFixed(2);
+
+    document.getElementById("pnl").textContent=
+      "$"+(
+        Number(s.balance)-Number(s.startBalance)
+      ).toFixed(2);
+
+    document.getElementById("position").textContent=
+      s.position
+      ?(
+        s.position.dir>0
+        ?"LONG "
+        :"SHORT "
+      )+Number(s.position.entry).toFixed(2)
+      :"FLAT";
+
+    document.getElementById("trades").textContent=
+      s.trades.length;
+
+    document.getElementById("bias").textContent=
+      s.bias>0
+      ?"BULLISH"
+      :s.bias<0
+      ?"BEARISH"
+      :"NEUTRAL";
+
+    document.getElementById("log").innerHTML=
+      s.log.map(x=>esc(x)).join("\n");
+
+    document.getElementById("shot").src=
+      "/api/screenshot?token="
+      +encodeURIComponent(token)
+      +"&t="+Date.now();
+
+  }catch(e){
+
+    document.getElementById("status").textContent=
+      e.message;
+
+  }
+}
+
+refresh();
+
+setInterval(refresh,10000);
+</script>
+
+</body>
+</html>
