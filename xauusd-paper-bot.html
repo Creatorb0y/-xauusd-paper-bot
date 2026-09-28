@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>XAU/USD Paper Bot — ICT + Order Flow</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --border:#2d333b;
+    --text:#d6dce4; --muted:#8b949e; --accent:#58a6ff; --green:#3fb950;
+    --red:#f85149; --amber:#d29922; --gold:#e3b341;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .mono{font-family:var(--mono)}
+  header{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--panel);}
+  header h1{font-size:16px;margin:0;font-weight:700;letter-spacing:.02em}
+  header h1 .sym{color:var(--gold)}
+  .pill{font-family:var(--mono);font-size:11px;padding:3px 10px;border-radius:999px;border:1px solid var(--border);background:var(--panel2);}
+  .pill.run{color:#7ee787;border-color:#1d4428;background:#12261a;}
+  .pill.pause{color:#f0d38c;border-color:#5c4a1a;background:#2a2412;}
+  .pill.idle{color:var(--muted);}
+  .spacer{flex:1}
+  button{background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:6px 13px;font-size:13px;cursor:pointer;font-weight:600;}
+  button:hover{border-color:var(--accent);color:#fff}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.primary{background:#12335a;border-color:#1f4470;color:#cfe6ff}
+  button.danger{background:#3a1412;border-color:#6b2b28;color:#ffb3ad}
+  button.on{background:#12261a;border-color:#1d4428;color:#7ee787}
+  button.off{background:#2a1512;border-color:#6b2b28;color:#ffb3ad}
+  .grid{display:grid;grid-template-columns:minmax(0,1fr) 372px;gap:14px;padding:14px 16px 40px;align-items:start;}
+  @media(max-width:1100px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px;min-width:0;}
+  .card h2{margin:0 0 8px;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:700;display:flex;align-items:center;gap:8px;}
+  .card h2 .right{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:500;color:var(--text);font-size:12px}
+  iframe#tvframe{width:100%;height:430px;border:0;border-radius:6px;background:#0a0d12;display:block}
+  canvas{display:block;width:100%}
+  .kv{display:grid;grid-template-columns:118px 1fr;gap:3px 10px;font-size:13px}
+  .kv .k{color:var(--muted)}
+  .kv .v{font-family:var(--mono);text-align:right;font-size:12.5px}
+  .big{font-size:19px !important;font-weight:700}
+  .pos{color:var(--green)} .neg{color:var(--red)} .neu{color:var(--muted)} .gold{color:var(--gold)} .blue{color:var(--accent)}
+  textarea{width:100%;background:#0a0d12;color:#c9d1d9;border:1px solid var(--border);border-radius:7px;font-family:var(--mono);font-size:11px;padding:8px;resize:vertical;min-height:70px}
+  input,select{background:#0a0d12;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12.5px;font-family:var(--mono);width:100%}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
+  .row{display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap}
+  .row label{font-size:12px;color:var(--muted);min-width:92px}
+  .btnrow{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 2px}
+  .lvl{border-left:3px solid var(--border);padding:4px 8px;margin:5px 0;font-size:12.5px;background:var(--panel2);border-radius:0 6px 6px 0;font-family:var(--mono)}
+  .lvl.long{border-color:var(--green)} .lvl.short{border-color:var(--red)} .lvl.info{border-color:var(--accent)} .lvl.warn{border-color:var(--amber)}
+  .lvl .tag{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  #logbox{max-height:210px;overflow-y:auto;font-family:var(--mono);font-size:11.5px;line-height:1.7}
+  #logbox .l{padding:1px 0;border-bottom:1px dashed #21262d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #logbox .l .t{color:var(--muted)}
+  #logbox .l.ok{color:#7ee787} #logbox .l.err{color:#ff8f8a} #logbox .l.info{color:#79c0ff} #logbox .l.warn{color:#f0d38c}
+  table{width:100%;border-collapse:collapse;font-size:12px;font-family:var(--mono)}
+  th,td{border-bottom:1px solid #21262d;padding:5px 7px;text-align:right;white-space:nowrap}
+  th{color:var(--muted);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;position:sticky;top:0;background:var(--panel)}
+  td.l{text-align:left}
+  .wrap-scroll{max-height:250px;overflow:auto}
+  tr.open td{background:#12261a}
+  .rangebar{position:relative;height:14px;border-radius:7px;background:linear-gradient(90deg,rgba(63,185,80,.35),rgba(210,153,34,.25) 50%,rgba(248,81,73,.35));border:1px solid var(--border);margin:6px 0 22px}
+  .rangebar .pin{position:absolute;top:-4px;width:3px;height:20px;background:#fff;border-radius:2px}
+  .rangebar .lbl{position:absolute;top:16px;font-size:10px;color:var(--muted);font-family:var(--mono)}
+  details{border:1px solid var(--border);border-radius:8px;background:var(--panel2);margin-top:8px;padding:0;font-size:12.5px}
+  summary{cursor:pointer;padding:8px 12px;font-weight:600;list-style-position:inside;color:var(--accent)}
+  details .inner{padding:2px 14px 12px;color:var(--muted)}
+  .foot{color:var(--muted);font-size:11px;padding:0 16px 24px;text-align:center}
+  .hint{font-size:11px;color:var(--muted);margin-top:4px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="sym">XAU/USD</span> Paper Bot · ICT + Order Flow</h1>
+  <span id="statusPill" class="pill idle">IDLE</span>
+  <span id="modePill" class="pill idle">no data</span>
+  <span class="spacer"></span>
+  <button id="btnStart" class="primary">▶ Start bot</button>
+  <button id="btnPause" disabled>⏸ Pause</button>
+  <button id="btnKz" class="on">Kill-zone filter: ON</button>
+  <button id="btnStep" title="Process next CSV candle">Step ▸</button>
+  <button id="btnFF" title="Process 50 CSV candles">FF ▸▸</button>
+  <button id="btnReset" class="danger">Reset account</button>
+</header>
+
+<div class="grid">
+  <!-- ===================== LEFT COLUMN ===================== -->
+  <div>
+    <div class="card">
+      <h2>TradingView · OANDA:XAUUSD <span class="right">public widget — bot logic uses the data feed below</span></h2>
+      <iframe id="tvframe" src="https://s.tradingview.com/widgetembed/?symbol=OANDA%3AXAUUSD&interval=15&theme=dark&style=1&timezone=Etc%2FUTC&hide_side_toolbar=0&allow_symbol_change=1&withdateranges=1&locale=en"></iframe>
+    </div>
+
+    <div class="card">
+      <h2>Bot chart — candles + ICT levels + volume delta <span class="right" id="chartInfo"></span></h2>
+      <canvas id="chart" height="430"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Equity curve <span class="right" id="eqInfo"></span></h2>
+      <canvas id="eqchart" height="150"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Trade log <span class="right" id="tradeCount"></span></h2>
+      <div class="wrap-scroll">
+        <table>
+          <thead><tr><th class="l">Opened</th><th class="l">Side</th><th>Lots</th><th>Entry</th><th>SL</th><th>TP</th><th>Exit</th><th>P&amp;L</th><th class="l">Result · Reason</th></tr></thead>
+          <tbody id="tradeRows"><tr><td colspan="9" class="l neu">No trades yet.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Event log</h2>
+      <div id="logbox"></div>
+    </div>
+  </div>
+
+  <!-- ===================== RIGHT SIDEBAR ===================== -->
+  <div>
+    <div class="card">
+      <h2>Dashboard</h2>
+      <div class="kv">
+        <div class="k">Bias</div>          <div class="v" id="dBias">—</div>
+        <div class="k">Session</div>       <div class="v" id="dSession">—</div>
+        <div class="k">Price</div>         <div class="v" id="dPrice">—</div>
+        <div class="k">Equity</div>        <div class="v big" id="dEquity">—</div>
+        <div class="k">Balance</div>       <div class="v" id="dBalance">—</div>
+        <div class="k">Floating P&L</div>  <div class="v" id="dFloat">—</div>
+        <div class="k">Win rate</div>      <div class="v" id="dWin">—</div>
+        <div class="k">Trades (W/L)</div>  <div class="v" id="dTrades">0 (0/0)</div>
+      </div>
+      <div class="rangebar" id="rangeBar" style="display:none">
+        <div class="pin" id="rangePin" style="left:50%"></div>
+        <div class="lbl" style="left:0">Discount</div>
+        <div class="lbl" style="left:46%">EQ</div>
+        <div class="lbl" style="right:0">Premium</div>
+      </div>
+      <div class="hint" id="rangeInfo"></div>
+      <div id="posCard" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;background:var(--panel2)">
+        <div class="kv">
+          <div class="k">Open position</div><div class="v" id="pSide">—</div>
+          <div class="k">Entry / Lots</div> <div class="v" id="pEntry">—</div>
+          <div class="k">SL / TP</div>      <div class="v" id="pSlTp">—</div>
+          <div class="k">Open P&L</div>     <div class="v" id="pPnl">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Levels &amp; structures</h2>
+      <div id="levels">Waiting for data…</div>
+    </div>
+
+    <div class="card">
+      <h2>Order flow</h2>
+      <div class="kv" id="flowBox">
+        <div class="k">Last candle Δ</div><div class="v" id="fDelta">—</div>
+        <div class="k">CVD</div>          <div class="v" id="fCvd">—</div>
+        <div class="k">CVD trend (20)</div><div class="v" id="fCvdTrend">—</div>
+      </div>
+      <div class="hint" id="flowNote"></div>
+    </div>
+
+    <div class="card">
+      <h2>Data &amp; settings</h2>
+      <div class="row"><label>Ten12 API key</label><input id="inKey" type="password" placeholder="Twelve Data API key (free tier works)"></div>
+      <div class="row"><label>Timeframe</label>
+        <select id="inTf"><option value="5min">5 min</option><option value="15min" selected>15 min</option></select>
+      </div>
+      <div class="row"><label>Poll / step</label><input id="inPoll" type="number" min="15" max="60" step="5" value="30"> <span class="hint">sec (15–60)</span></div>
+      <div class="row"><label>Start balance</label><input id="inBalance" type="number" min="100" step="100" value="10000"> <span class="hint">$ — applied on Reset</span></div>
+      <div class="row"><label>CSV TZ offset</label><input id="inTz" type="number" step="1" value="0" style="width:70px"> <span class="hint">h — shift pasted-CSV times to UTC</span></div>
+      <div class="btnrow">
+        <button id="btnFetch">⇣ Fetch live now</button>
+        <button id="btnDemo">Load demo data</button>
+      </div>
+      <div style="margin-top:8px">
+        <textarea id="inCsv" rows="5" placeholder="Manual mode: paste TradingView OHLCV CSV export here (time,open,high,low,close,volume)"></textarea>
+        <div class="btnrow"><button id="btnCsv">Load CSV</button><button id="btnLiveMode">Use live data</button></div>
+        <div class="hint">CSV from TradingView is in exchange time — set the TZ offset so kill-zone filtering lines up with UTC.</div>
+      </div>
+      <details>
+        <summary>Strategy rules (what the bot does)</summary>
+        <div class="inner">
+          <p><b>Bias</b> — flip on Break of Structure / Change of Character (close through last confirmed swing).</p>
+          <p><b>Setup</b> — longs only in discount (&lt; range EQ), shorts only in premium (&gt; EQ). Entry when price retests an unmitigated FVG or Order Block within 24 candles of the structure shift.</p>
+          <p><b>Confirmation</b> — entry candle must close in the trade direction <i>and</i> have positive candle delta (longs) / negative (shorts). Delta is a tick-volume proxy: vol × (2·(close−low)/(high−low) − 1).</p>
+          <p><b>Sessions</b> — optional filter: London 07:00–10:00 UTC, NY 12:00–15:00 UTC (candle open time).</p>
+          <p><b>Risk</b> — 1% of current balance per trade; SL beyond protected swing/OB (buffer = max(0.30, 0.1×ATR14)); TP exactly 1:1. Lots = balance×0.01 ÷ (stopDist × 100 oz), rounded to 0.01.</p>
+          <p><b>Fills</b> — simulated on candle high/low touch; if SL and TP are touched in the same candle it is counted a loss (conservative).</p>
+        </div>
+      </details>
+    </div>
+  </div>
+</div>
+
+<div class="foot">Paper trading only — no real orders are placed. Simulated fills use candle OHLC, not tick data. Paste <span class="mono">?selftest=1</span> in the URL to run the built-in logic test.</div>
+
+<script>
+"use strict";
+/* ================================================================
+   XAU/USD PAPER BOT — ICT + ORDER FLOW
+   Single-file, vanilla JS. Strategy logic lives in clearly separated
+   functions (sections 5–9) so rules are easy to tweak.
+   ================================================================ */
+
+/* ============ 1. CONFIG — tweak the rules here ============ */
+const CONFIG = {
+  swingLookback : 2,      // fractal pivot strength (bars each side)
+  fvgMinGap     : 0.15,   // min FVG height in USD (noise filter)
+  shiftMaxAge   : 24,     // entry valid within N candles after BOS/CHoCH
+  zoneMaxAge    : 96,     // ignore FVG/OB older than N candles
+  slBufferUsd   : 0.30,   // SL buffer beyond protected swing / OB
+  riskPct       : 0.01,   // risk 1% of current balance per trade
+  rr            : 1.0,    // take-profit = 1:1 (same distance as SL)
+  ozPerLot      : 100,    // XAUUSD standard lot = 100 oz
+  cooldownMs    : 15*60e3,// min gap between trades (one candle on 15m)
+  kzLondon      : [7,10], // London kill zone 07:00–10:00 UTC
+  kzNewYork     : [12,15],// NY kill zone 12:00–15:00 UTC
+  maxCandles    : 400,    // rolling window kept in memory
+  visCandles    : 140,    // candles drawn on bot chart
+  rangeLookback : 96,     // dealing-range lookback (premium/discount)
+  tradeLogMax   : 200,
+};
+
+/* ============ 2. STATE & PERSISTENCE ============ */
+const LS_KEY = "xauusdPaperBot.v1";
+const state = {
+  mode:"LIVE", running:false, pollTimer:null, fetching:false,
+  candles:[], csvQueue:[], csvCursor:0,
+  position:null, balance:10000, startBalance:10000,
+  trades:[], equity:[], log:[], lastTradeTime:0, lastEvalT:0,
+  // strategy outputs (recomputed each evaluate)
+  bias:0, events:[], pivots:[], activeFVGs:[], activeOBs:[], sweeps:[],
+  lastShift:null, rangeHigh:0, rangeLow:0, atr:0, flowProxy:false,
+  settings:{ apiKey:"", tf:"15min", pollSec:30, kzFilter:true, csvTz:0 },
+};
+function saveState(){
+  try{
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      balance:state.balance, startBalance:state.startBalance, trades:state.trades,
+      equity:state.equity, log:state.log.slice(0,80), lastTradeTime:state.lastTradeTime,
+      settings:state.settings, position:state.position,
+    }));
+  }catch(e){/* storage unavailable (sandboxed preview) — run in-memory */}
+}
+function loadState(){
+  try{
+    const s=JSON.parse(localStorage.getItem(LS_KEY)||"null");
+    if(!s) return;
+    Object.assign(state,{
+      balance:s.balance??10000, startBalance:s.startBalance??10000,
+      trades:s.trades||[], equity:s.equity||[], log:s.log||[],
+      lastTradeTime:s.lastTradeTime||0, position:s.position||null,
+    });
+    if(s.settings) Object.assign(state.settings, s.settings);
+  }catch(e){}
+}
+
+/* ============ 3. UTILS ============ */
+const $=id=>document.getElementById(id);
+const fmtUSD=n=>(n<0?"-$":"$")+Math.abs(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtPx=n=>(+n).toFixed(2);
+const fmtLots=n=>n.toFixed(2);
+const fmtVol=n=>Math.abs(n)>=1e6?(n/1e6).toFixed(2)+"M":Math.abs(n)>=1e3?(n/1e3).toFixed(1)+"k":Math.round(n).toString();
+const sgn=n=>n>0?"+":"";
+function iso(ms){ const d=new Date(ms); return d.toISOString().replace("T"," ").slice(5,16)+"U"; }
+function log(msg,cls){
+  state.log.unshift({t:Date.now(),msg,cls:cls||"info"});
+  if(state.log.length>CONFIG.tradeLogMax) state.log.length=CONFIG.tradeLogMax;
+  renderLog();
+}
+window.onerror=(m)=>{ log("JS error: "+m,"err"); };
+
+/* ============ 4. INDICATORS ============ */
+function ema(vals,p){
+  const k=2/(p+1), out=[]; let e=vals[0];
+  vals.forEach((v,i)=>{ e=i?v*k+e*(1-k):v; out.push(e); });
+  return out;
+}
+function atr(c,p){
+  if(c.length<2) return 1;
+  let s=0,n=0;
+  for(let i=Math.max(1,c.length-p);i<c.length;i++){
+    const pc=c[i-1].c;
+    s+=Math.max(c[i].h-c[i].l, Math.abs(c[i].h-pc), Math.abs(c[i].l-pc)); n++;
+  }
+  return n? s/n : 1;
+}
+
+/* ============ 5. ICT STRUCTURE ============ */
+// Fractal swing pivots (confirmed after `swingLookback` bars on each side)
+function computeSwings(c){
+  const LB=CONFIG.swingLookback, piv=[];
+  for(let i=LB;i<c.length-LB;i++){
+    let isH=true,isL=true;
+    for(let k=1;k<=LB;k++){
+      if(c[i].h<=c[i-k].h||c[i].h<c[i+k].h) isH=false;
+      if(c[i].l>=c[i-k].l||c[i].l>c[i+k].l) isL=false;
+    }
+    if(isH) piv.push({i,t:c[i].t,price:c[i].h,kind:"H"});
+    if(isL) piv.push({i,t:c[i].t,price:c[i].l,kind:"L"});
+  }
+  state.pivots=piv;
+}
+// BOS / CHoCH: walk candles; a close through the latest confirmed swing
+// flips structure. First break against the previous break = CHoCH, else BOS.
+function computeStructure(c){
+  const LB=CONFIG.swingLookback, ev=[]; let lastH=null,lastL=null,pi=0,prevDir=0;
+  for(let i=0;i<c.length;i++){
+    while(pi<state.pivots.length && state.pivots[pi].i+LB<=i){
+      const p=state.pivots[pi++]; if(p.kind==="H") lastH=p; else lastL=p;
+    }
+    const cd=c[i];
+    if(lastH && !lastH.broken && cd.c>lastH.price){
+      lastH.broken=true;
+      ev.push({t:cd.t,dir:1,kind:prevDir===-1?"CHoCH":"BOS",level:lastH.price});
+      prevDir=1;
+    }
+    if(lastL && !lastL.broken && cd.c<lastL.price){
+      lastL.broken=true;
+      ev.push({t:cd.t,dir:-1,kind:prevDir===1?"CHoCH":"BOS",level:lastL.price});
+      prevDir=-1;
+    }
+  }
+  state.events=ev.slice(-30);
+  state.bias=prevDir;
+  state.lastShift=ev.length?ev[ev.length-1]:null;
+}
+// Fair Value Gaps: 3-candle imbalance. Bullish FVG = newer candle's LOW gapped
+// above the older candle's HIGH → zone [older high, newer low]; bearish mirrored.
+// A zone is removed once price trades through its 50% midpoint (mitigation).
+function computeFVGs(c){
+  const raw=[];
+  for(let i=2;i<c.length;i++){
+    const a=c[i-2], b=c[i];
+    if(b.l-a.h>=CONFIG.fvgMinGap) raw.push({t:b.t,top:b.l,bot:a.h,dir:1});      // bullish: gapped up
+    else if(a.l-b.h>=CONFIG.fvgMinGap) raw.push({t:b.t,top:a.l,bot:b.h,dir:-1}); // bearish: gapped down
+  }
+  const cutoff=c.length?c[Math.max(0,c.length-CONFIG.zoneMaxAge)].t:0;
+  state.activeFVGs=raw.filter(z=>{
+    if(z.t<cutoff) return false;
+    const mid=(z.top+z.bot)/2;
+    for(const cd of c){
+      if(cd.t<=z.t) continue;
+      if(z.dir>0 ? cd.l<=mid : cd.h>=mid) return false; // mitigated
+    }
+    return true;
+  }).slice(-6);
+}
+// Order Blocks: last opposing candle before an engulfing impulse candle.
+// Bullish OB = down candle followed by a close above its high; invalid once
+// a candle CLOSES below its bottom (bearish mirrored).
+function computeOBs(c){
+  const raw=[];
+  for(let i=1;i<c.length-1;i++){
+    const o=c[i], nx=c[i+1];
+    if(o.c<o.o && nx.c>o.h) raw.push({t:o.t,top:o.o,bot:o.l,dir:1});
+    if(o.c>o.o && nx.c<o.l) raw.push({t:o.t,top:o.h,bot:o.o,dir:-1});
+  }
+  const cutoff=c.length?c[Math.max(0,c.length-CONFIG.zoneMaxAge)].t:0;
+  state.activeOBs=raw.filter(z=>{
+    if(z.t<cutoff) return false;
+    for(const cd of c){
+      if(cd.t<=z.t) continue;
+      if(z.dir>0 ? cd.c<z.bot : cd.c>z.top) return false; // invalidated
+    }
+    return true;
+  }).slice(-4);
+}
+// Liquidity sweeps: wick beyond a confirmed swing, but the candle CLOSES back
+// inside (stop hunt). Opposite close-through is BOS, so the two don't collide.
+function computeSweeps(c){
+  const LB=CONFIG.swingLookback, out=[]; let lastH=null,lastL=null,pi=0;
+  for(let i=0;i<c.length;i++){
+    while(pi<state.pivots.length && state.pivots[pi].i+LB<=i){
+      const p=state.pivots[pi++]; if(p.kind==="H") lastH=p; else lastL=p;
+    }
+    const cd=c[i];
+    if(lastH && !lastH.swept && !lastH.broken && cd.h>lastH.price && cd.c<lastH.price){
+      lastH.swept=true; out.push({t:cd.t,dir:-1,price:lastH.price,side:"high"});
+    }
+    if(lastL && !lastL.swept && !lastL.broken && cd.l<lastL.price && cd.c>lastL.price){
+      lastL.swept=true; out.push({t:cd.t,dir:1,price:lastL.price,side:"low"});
+    }
+  }
+  state.sweeps=out.slice(-8);
+}
+// Dealing range: extremes of the recent window → premium / discount halves.
+function computeDealingRange(c){
+  const win=c.slice(-CONFIG.rangeLookback);
+  if(win.length<10){ state.rangeHigh=0; state.rangeLow=0; return; }
+  state.rangeHigh=Math.max(...win.map(k=>k.h));
+  state.rangeLow =Math.min(...win.map(k=>k.l));
+}
+
+/* ============ 6. ORDER FLOW (delta & CVD from tick volume) ============ */
+// Signed delta proxy per candle, in volume units:
+//   vol × (2·(close−low)/(high−low) − 1)   →  +vol = all buying, −vol = all selling
+// If the feed has no volume (common for spot FX), fall back to a
+// price-range proxy: (close−open)×100, and flag it in the UI.
+function candleDelta(c){
+  const rng=c.h-c.l;
+  if(rng<=0) return 0;
+  if(c.v>0) return c.v*(2*(c.c-c.l)/rng-1);
+  return (c.c-c.o)*100;
+}
+function computeFlow(c){
+  let cvd=0, anyVol=false;
+  for(const k of c){ if(k.v>0) anyVol=true; k.delta=candleDelta(k); cvd+=k.delta; k.cvd=cvd; }
+  state.flowProxy=!anyVol;
+  return c.length?c[c.length-1]:null;
+}
+
+/* ============ 7. SESSIONS (kill zones, UTC) ============ */
+function inKillzone(ms){
+  const h=new Date(ms).getUTCHours()+new Date(ms).getUTCMinutes()/60;
+  const inWin=(w)=>h>=w[0]&&h<w[1];
+  return inWin(CONFIG.kzLondon)||inWin(CONFIG.kzNewYork);
+}
+function sessionName(ms){
+  const h=new Date(ms).getUTCHours();
+  if(h>=CONFIG.kzLondon[0]&&h<CONFIG.kzLondon[1]) return "London KZ";
+  if(h>=CONFIG.kzNewYork[0]&&h<CONFIG.kzNewYork[1]) return "New York KZ";
+  return "Off-session";
+}
+
+/* ============ 8. RISK & TRADE ENGINE ============ */
+function sizePosition(stopDist){
+  const riskUSD=state.balance*CONFIG.riskPct;          // exactly 1% of balance
+  let lots=riskUSD/(stopDist*CONFIG.ozPerLot);         // spec formula
+  lots=Math.max(0.01,Math.round(lots*100)/100);        // round to 0.01 lots (broker min)
+  return {lots,riskUSD,actualRisk:lots*CONFIG.ozPerLot*stopDist};
+}
+function openPosition(dir,entry,sl,tp,lots,reason,candle){
+  state.position={dir,entry,sl,tp,lots,oz:lots*CONFIG.ozPerLot,
+    openTime:candle.t,reason,openedAt:Date.now()};
+  state.trades.push({...state.position,status:"OPEN",exit:null,pnl:0,outcome:"",closedAt:0});
+  log(`${dir>0?"LONG":"SHORT"} ${fmtLots(lots)} lots @ ${fmtPx(entry)} · SL ${fmtPx(sl)} · TP ${fmtPx(tp)} — ${reason}`,"ok");
+}
+function closePosition(exitPrice,outcome,candle){
+  const p=state.position; if(!p) return;
+  const pnl=(exitPrice-p.entry)*p.dir*p.oz;
+  state.balance+=pnl;
+  const tr=state.trades[state.trades.length-1];
+  if(tr&&tr.status==="OPEN"){ tr.status="CLOSED"; tr.exit=exitPrice; tr.pnl=pnl; tr.outcome=outcome; tr.closedAt=candle.t; }
+  state.equity.push({t:candle.t,eq:state.balance});
+  if(state.equity.length>500) state.equity.shift();
+  state.lastTradeTime=candle.t;
+  log(`Closed ${p.dir>0?"LONG":"SHORT"} @ ${fmtPx(exitPrice)} · ${outcome} · P&L ${sgn(pnl)}${fmtUSD(pnl)} · balance ${fmtUSD(state.balance)}`, pnl>=0?"ok":"err");
+  state.position=null;
+}
+// Exits: simulate fills on candle high/low touch. If SL and TP are both
+// touched inside the same candle → counted as a LOSS (conservative).
+// Gap opens beyond SL/TP fill at the open (better realistic price).
+function processExits(closed){
+  const p=state.position; if(!p) return;
+  for(const cd of closed){
+    if(cd.t<=p.openTime) continue;
+    const hitTP=p.dir>0?cd.h>=p.tp:cd.l<=p.tp;
+    const hitSL=p.dir>0?cd.l<=p.sl:cd.h>=p.sl;
+    if(hitTP&&hitSL){ closePosition(p.sl,"SL (both touched in candle)",cd); return; }
+    if(hitTP){
+      const gap=p.dir>0?cd.o>=p.tp:cd.o<=p.tp;
+      closePosition(gap?cd.o:p.tp,"TP",cd); return;
+    }
+    if(hitSL){
+      const gap=p.dir>0?cd.o<=p.sl:cd.o>=p.sl;
+      closePosition(gap?cd.o:p.sl,"SL",cd); return;
+    }
+  }
+}
+
+/* ============ 9. SIGNAL LOGIC (entry conditions — tweak me) ============ */
+// Finds an entry signal on the LAST CLOSED candle, or returns null.
+// Rules: bias-aligned + (kill zone) + recent structure shift + price retested
+// an unmitigated FVG/OB + delta confirmation + premium/discount filter.
+function detectEntrySignal(closed){
+  const n=closed.length; if(n<30) return null;
+  const cd=closed[n-1], prev=closed[n-2];
+  if(!cd||!prev) return null;
+  if(state.bias===0||!state.lastShift) return null;
+  const dir=state.bias;
+  if(state.lastShift.dir!==dir) return null;
+  // structure shift must be recent
+  const tf=tfMs();
+  if(state.lastShift.t>cd.t || cd.t-state.lastShift.t > CONFIG.shiftMaxAge*tf) return null;
+  // session filter
+  if(state.settings.kzFilter && !inKillzone(cd.t)) return null;
+  // cooldown after last closed trade
+  if(cd.t-state.lastTradeTime < CONFIG.cooldownMs) return null;
+  // delta confirmation: bullish retest must close green with positive delta
+  if(dir>0 ? !(cd.c>cd.o && cd.delta>0) : !(cd.c<cd.o && cd.delta<0)) return null;
+  // premium / discount filter: longs only in discount, shorts only in premium
+  if(state.rangeHigh>state.rangeLow){
+    const pos=(cd.c-state.rangeLow)/(state.rangeHigh-state.rangeLow);
+    if(dir>0 && pos>=0.5) return null;
+    if(dir<0 && pos<=0.5) return null;
+  }
+  // retest: candle range overlaps an unmitigated FVG (preferred) or OB
+  const zones=[...state.activeFVGs,...state.activeOBs]
+    .filter(z=>z.dir===dir).sort((a,b)=>b.t-a.t);
+  for(const z of zones){
+    const overlap=dir>0 ? (cd.l<=z.top && cd.h>=z.bot) : (cd.h>=z.bot && cd.l<=z.top);
+    const holding =dir>0 ? cd.c>z.bot : cd.c<z.top;   // didn't close through far edge
+    if(!overlap||!holding) continue;
+    // protected swing = lowest low (longs) between the shift and now
+    let prot=z.bot;
+    for(const k of closed){ if(k.t>=state.lastShift.t&&k.t<=cd.t) prot=dir>0?Math.min(prot,k.l):Math.max(prot,k.h); }
+    const buffer=Math.max(CONFIG.slBufferUsd,0.1*state.atr);
+    const entry=cd.c;
+    const sl=dir>0?prot-buffer:prot+buffer;
+    const stopDist=Math.abs(entry-sl);
+    if(stopDist<0.5) continue;                        // degenerate stop
+    const tp=entry+dir*stopDist*CONFIG.rr;            // exactly 1:1
+    const zoneName=(state.activeFVGs.includes(z)?"FVG":"OB");
+    return {dir,entry,sl,tp,zone:z,zoneName,
+      reason:`${dir>0?"Long":"Short"} from ${zoneName} ${fmtPx(z.bot)}–${fmtPx(z.top)} after ${state.lastShift.kind} + delta confirmation`};
+  }
+  return null;
+}
+function processEntry(closed){
+  if(state.position||state.balance<=0) return;
+  const cd=closed[closed.length-1];
+  // live mode: don't fire on stale history (CSV replay may legitimately be old)
+  if(state.mode==="LIVE" && Date.now()-cd.t>3*tfMs()) return;
+  const sig=detectEntrySignal(closed);
+  if(!sig) return;
+  const {lots,actualRisk}=sizePosition(Math.abs(sig.entry-sig.sl));
+  if(Math.abs(actualRisk-state.balance*CONFIG.riskPct)>state.balance*CONFIG.riskPct*0.5)
+    log(`Note: min-lot clamp — actual risk ${fmtUSD(actualRisk)} vs target ${fmtUSD(state.balance*CONFIG.riskPct)}`,"warn");
+  openPosition(sig.dir,sig.entry,sig.sl,sig.tp,lots,sig.reason,cd);
+}
+
+/* ============ EVALUATION PIPELINE ============ */
+function tfMs(){ return state.settings.tf==="5min"?5*60e3:15*60e3; }
+function evaluate(render){
+  const c=state.candles; if(c.length<30) return;
+  // in LIVE mode the last candle may still be forming — signals & exits use closed candles only
+  const forming=state.mode==="LIVE" && c.length && (c[c.length-1].t+tfMs()>Date.now()-5000);
+  const closed=forming?c.slice(0,-1):c;
+  if(closed.length<30) return;
+  state.atr=atr(closed,14);
+  computeSwings(closed);
+  computeStructure(closed);
+  computeFVGs(closed);
+  computeOBs(closed);
+  computeSweeps(closed);
+  computeDealingRange(closed);
+  computeFlow(closed);
+  processExits(closed);                          // exits first
+  if(closed[closed.length-1].t>state.lastEvalT){ // entries once per new candle
+    state.lastEvalT=closed[closed.length-1].t;
+    processEntry(closed);
+  }
+  if(render!==false){ renderAll(); saveState(); }
+}
+
+/* ============ 10. DATA LAYER ============ */
+function parseTimestamp(s,offsetH){
+  s=(s||"").trim().replace(/^"|"$/g,"");
+  let m=s.match(/^(\d{4})[.\-\/](\d{2})[.\-\/](\d{2})[T ]?(\d{2})?:?(\d{2})?:?(\d{2})?/);
+  if(!m){ const d=Date.parse(s); return isNaN(d)?Date.now():d; }
+  return Date.UTC(+m[1],+m[2]-1,+m[3],+(m[4]||0),+(m[5]||0),+(m[6]||0))-(offsetH||0)*3600000;
+}
+function parseCsv(text){
+  const lines=text.trim().split(/\r?\n/).filter(l=>l.trim());
+  if(!lines.length) throw new Error("CSV is empty");
+  let start=1,map={t:0,o:1,h:2,l:3,c:4,v:5};
+  if(/open/i.test(lines[0])&&/close/i.test(lines[0])){
+    const hdr=lines[0].split(/[,;\t]/).map(s=>s.trim().toLowerCase());
+    const idx=k=>hdr.findIndex(h=>h.includes(k));
+    map={t:Math.max(idx("time"),0),o:idx("open"),h:idx("high"),l:idx("low"),c:idx("close"),v:idx("vol")};
+    if(map.o<0||map.h<0||map.l<0||map.c<0) throw new Error("CSV header missing OHLC columns");
+  } else start=0;
+  const out=[];
+  for(let i=start;i<lines.length;i++){
+    const col=lines[i].split(/[,;\t]/).map(s=>s.trim());
+    if(col.length<5) continue;
+    const o=+col[map.o],h=+col[map.h],l=+col[map.l],cc=+col[map.c];
+    if(![o,h,l,cc].every(isFinite)||h<Math.max(o,cc)||l>Math.min(o,cc)) continue;
+    out.push({t:parseTimestamp(col[map.t],state.settings.csvTz),o,h,l,c:cc,
+      v:map.v>=0?Math.abs(+col[map.v]||0):0,delta:0,cvd:0});
+  }
+  if(out.length<60) throw new Error(`Need ≥60 candles, parsed ${out.length}`);
+  out.sort((a,b)=>a.t-b.t);
+  return out;
+}
+function loadCsvMode(list,label){
+  if(!Array.isArray(list)) throw new Error("loadCsvMode expects a parsed candle array");
+  state.mode="CSV";
+  state.csvQueue=list; state.csvCursor=Math.min(80,list.length);
+  state.candles=list.slice(0,state.csvCursor).map(k=>({...k}));
+  state.lastEvalT=0; state.position=null;
+  log(`Loaded ${list.length} candles (${label}) — replay mode. Start/Step processes new candles.`,"info");
+  evaluate();
+}
+async function fetchLive(){
+  if(state.fetching) return;
+  if(!state.settings.apiKey){ log("Enter a Twelve Data API key to fetch live candles (or paste CSV).","warn"); return; }
+  state.fetching=true;
+  try{
+    const url=`https://api.twelvedata.com/time_series?symbol=${encodeURIComponent("XAU/USD")}`+
+      `&interval=${state.settings.tf}&outputsize=2&timezone=UTC&apikey=${encodeURIComponent(state.settings.apiKey)}`;
+    const r=await fetch(url);
+    const j=await r.json();
+    if(j.status==="error"||!j.values) throw new Error(j.message||"Twelve Data returned no values");
+    const list=j.values.map(v=>({t:parseTimestamp(v.datetime,0),o:+v.open,h:+v.high,l:+v.low,c:+v.close,
+      v:+(v.volume||0),delta:0,cvd:0})).sort((a,b)=>a.t-b.t);
+    const prevLastT=state.candles.length?state.candles[state.candles.length-1].t:0;
+    const map=new Map(state.candles.map(k=>[k.t,k]));
+    for(const k of list) map.set(k.t,Object.assign(map.get(k.t)||{v:0,delta:0,cvd:0},k));
+    state.candles=[...map.values()].sort((a,b)=>a.t-b.t).slice(-CONFIG.maxCandles);
+    if(state.mode!=='LIVE'){ state.mode="LIVE"; state.csvQueue=[]; state.csvCursor=0; }
+    // Evaluate once per newly arrived candle so a batched merge (e.g. after a
+    // long sleep) skips no signals — each step sees state as it was then.
+    const firstNew=state.candles.findIndex(k=>k.t>prevLastT);
+    if(firstNew>=0&&state.candles.length-firstNew>1){
+      const full=state.candles.length;
+      for(let L=firstNew+1;L<=full;L++){ state.candles.length=L; evaluate(false); }
+      state.candles.length=full;
+      renderAll(); saveState();
+    } else evaluate();
+  }catch(e){ log("Data error: "+e.message,"err"); }
+  finally{ state.fetching=false; }
+}
+function pollTick(){
+  if(!state.running) return;
+  if(state.mode==="LIVE") fetchLive();
+  else if(state.mode==="CSV") stepCsv(1);
+}
+function stepCsv(k){
+  let done=0;
+  for(let i=0;i<k&&state.csvCursor<state.csvQueue.length;i++,state.csvCursor++,done++){
+    state.candles.push({...state.csvQueue[state.csvCursor]});
+    if(state.candles.length>CONFIG.maxCandles) state.candles.splice(0,state.candles.length-CONFIG.maxCandles);
+    evaluate(false); // per-candle evaluation: nothing inside the batch is skipped
+  }
+  if(!done){ log("End of CSV data reached.","warn"); pauseBot(); renderAll(); return; }
+  renderAll(); saveState();
+}
+
+/* ============ 11. UI RENDERING ============ */
+function renderStatus(){
+  const sp=$("statusPill");
+  sp.textContent=state.running?(state.mode==="CSV"?"REPLAYING":"RUNNING"):(state.position?"HOLDING":"PAUSED");
+  sp.className="pill "+(state.running?"run":"pause");
+  const mp=$("modePill");
+  mp.textContent=state.mode==="CSV"?`CSV replay · ${state.candles.length}/${state.csvQueue.length} candles`
+    :`LIVE · ${state.candles.length} candles · ${state.settings.tf}`;
+  mp.className="pill "+(state.candles.length?"run":"idle");
+  $("btnStart").disabled=state.running;
+  $("btnPause").disabled=!state.running;
+  $("btnStep").disabled=state.mode!=="CSV"||state.running;
+  $("btnFF").disabled=state.mode!=="CSV"||state.running;
+  $("btnKz").textContent="Kill-zone filter: "+(state.settings.kzFilter?"ON":"OFF");
+  $("btnKz").className=state.settings.kzFilter?"on":"off";
+}
+function renderDashboard(){
+  const c=state.candles, last=c.length?c[c.length-1]:null;
+  const price=last?last.c:0;
+  const float=state.position?(price-state.position.entry)*state.position.dir*state.position.oz:0;
+  const eq=state.balance+float;
+  $("dPrice").textContent=last?fmtPx(price):"—";
+  $("dEquity").textContent=fmtUSD(eq);
+  $("dEquity").className="v big "+(float>0?"pos":float<0?"neg":"");
+  $("dBalance").textContent=fmtUSD(state.balance);
+  $("dFloat").textContent=state.position?sgn(float)+fmtUSD(float):"—";
+  $("dFloat").className="v "+(float>0?"pos":float<0?"neg":"neu");
+  const wins=state.trades.filter(t=>t.status==="CLOSED"&&t.pnl>0).length;
+  const loss=state.trades.filter(t=>t.status==="CLOSED"&&t.pnl<=0).length;
+  $("dWin").textContent=(wins+loss)?((100*wins/(wins+loss)).toFixed(1)+"%"):"—";
+  $("dTrades").textContent=`${wins+loss} (${wins}/${loss})`;
+  const b=state.bias;
+  $("dBias").textContent=b>0?"BULLISH":b<0?"BEARISH":"NEUTRAL";
+  $("dBias").className="v "+(b>0?"pos":b<0?"neg":"neu");
+  const now=Date.now();
+  $("dSession").textContent=inKillzone(now)?sessionName(now)+" ✓":"off-session";
+  $("dSession").className="v "+(inKillzone(now)?"pos":"neu");
+  // premium/discount position bar
+  if(state.rangeHigh>state.rangeLow){
+    const pos=Math.min(100,Math.max(0,100*(price-state.rangeLow)/(state.rangeHigh-state.rangeLow)));
+    $("rangeBar").style.display="block";
+    $("rangePin").style.left=pos+"%";
+    $("rangeInfo").textContent=`Range ${fmtPx(state.rangeLow)}–${fmtPx(state.rangeHigh)} · EQ ${fmtPx((state.rangeHigh+state.rangeLow)/2)} · price at ${pos.toFixed(0)}%`;
+  } else { $("rangeBar").style.display="none"; $("rangeInfo").textContent="Dealing range needs more candles."; }
+  // open position card
+  const pc=$("posCard");
+  if(state.position){
+    pc.style.display="block";
+    const p=state.position;
+    $("pSide").innerHTML=`<span class="${p.dir>0?'pos':'neg'}">${p.dir>0?"LONG":"SHORT"}</span>`;
+    $("pEntry").textContent=`${fmtPx(p.entry)} · ${fmtLots(p.lots)} lots`;
+    $("pSlTp").textContent=`${fmtPx(p.sl)} / ${fmtPx(p.tp)}`;
+    $("pPnl").textContent=sgn(float)+fmtUSD(float);
+    $("pPnl").className="v "+(float>=0?"pos":"neg");
+  } else pc.style.display="none";
+}
+function renderLevels(){
+  const box=$("levels"); let html="";
+  if(state.lastShift){
+    const s=state.lastShift;
+    html+=`<div class="lvl ${s.dir>0?'long':'short'}"><span class="tag">${s.kind}</span> ${s.dir>0?"▲ bullish":"▼ bearish"} @ ${fmtPx(s.level)} · ${iso(s.t)}</div>`;
+  }
+  for(const f of state.activeFVGs.slice(-3).reverse())
+    html+=`<div class="lvl ${f.dir>0?'long':'short'}"><span class="tag">FVG ${f.dir>0?"bull":"bear"}</span> ${fmtPx(f.bot)}–${fmtPx(f.top)} (mid ${fmtPx((f.top+f.bot)/2)}) · ${iso(f.t)}</div>`;
+  for(const o of state.activeOBs.slice(-2).reverse())
+    html+=`<div class="lvl ${o.dir>0?'long':'short'}"><span class="tag">OB ${o.dir>0?"bull":"bear"}</span> ${fmtPx(o.bot)}–${fmtPx(o.top)} · ${iso(o.t)}</div>`;
+  for(const s of state.sweeps.slice(-3).reverse())
+    html+=`<div class="lvl warn"><span class="tag">sweep</span> ${s.side==="high"?"buy-side":"sell-side"} liquidity @ ${fmtPx(s.price)} · ${iso(s.t)}</div>`;
+  if(state.rangeHigh>state.rangeLow)
+    html+=`<div class="lvl info"><span class="tag">dealing range</span> ${fmtPx(state.rangeLow)} – ${fmtPx(state.rangeHigh)} · EQ ${fmtPx((state.rangeHigh+state.rangeLow)/2)}</div>`;
+  const cd=state.candles.length?state.candles[state.candles.length-1]:null;
+  if(cd&&state.bias!==0&&state.lastShift){
+    const waiting=state.bias>0?"long pullback into FVG/OB (discount, green close + Δ>0)":"short pullback into FVG/OB (premium, red close + Δ<0)";
+    html+=`<div class="lvl ${state.bias>0?'long':'short'}"><span class="tag">waiting</span> ${waiting}</div>`;
+  }
+  box.innerHTML=html||"Waiting for data…";
+}
+function renderFlow(){
+  const c=state.candles; const last=c.length?c[c.length-1]:null;
+  if(!last){ $("fDelta").textContent="—"; return; }
+  $("fDelta").textContent=sgn(last.delta)+fmtVol(last.delta);
+  $("fDelta").className="v "+(last.delta>0?"pos":last.delta<0?"neg":"neu");
+  $("fCvd").textContent=sgn(last.cvd)+fmtVol(last.cvd);
+  const prev=c.length>20?c[c.length-21].cvd:0;
+  const d=last.cvd-prev;
+  $("fCvdTrend").textContent=(d>0?"▲ rising ":"▼ falling ")+sgn(d)+fmtVol(d);
+  $("fCvdTrend").className="v "+(d>0?"pos":"neg");
+  $("flowNote").textContent=state.flowProxy
+    ?"Feed has no volume — Δ/CVD use a price-range proxy ((close−open)×100). Sign is reliable, magnitude is not."
+    :"Δ = tick-volume proxy: vol × (2·(close−low)/(high−low) − 1). CVD = cumulative sum.";
+}
+function renderLog(){
+  $("logbox").innerHTML=state.log.map(l=>`<div class="l ${l.cls}"><span class="t">${iso(l.t)}</span> ${escapeHtml(l.msg)}</div>`).join("");
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m])); }
+function renderTrades(){
+  const rows=state.trades.slice().reverse().map(t=>{
+    const open=t.status==="OPEN";
+    const price=state.candles.length?state.candles[state.candles.length-1].c:0;
+    const pnl=open?(price-t.entry)*t.dir*t.oz:t.pnl;
+    return `<tr${open?' class="open"':''}><td class="l">${iso(t.openTime)}</td>`+
+      `<td class="l ${t.dir>0?'pos':'neg'}">${t.dir>0?"LONG":"SHORT"}</td>`+
+      `<td>${fmtLots(t.lots)}</td><td>${fmtPx(t.entry)}</td><td>${fmtPx(t.sl)}</td><td>${fmtPx(t.tp)}</td>`+
+      `<td>${open?"—":fmtPx(t.exit)}</td>`+
+      `<td class="${pnl>0?'pos':pnl<0?'neg':''}">${open?sgn(pnl)+fmtUSD(pnl):(pnl>=0?"+":"")+fmtUSD(t.pnl)}</td>`+
+      `<td class="l">${open?"OPEN · ":escapeHtml(t.outcome+" · ")}${escapeHtml(t.reason)}</td></tr>`;
+  });
+  $("tradeRows").innerHTML=rows.join("")||`<tr><td colspan="9" class="l neu">No trades yet.</td></tr>`;
+  $("tradeCount").textContent=`${state.trades.length} total`;
+}
+/* --- canvas: bot chart with ICT overlays + delta/CVD pane --- */
+function drawChart(){
+  const cv=$("chart"), c=state.candles;
+  const dpr=window.devicePixelRatio||1;
+  const W=cv.clientWidth||900, H=430, paneH=Math.round(H*0.22), pH=H-paneH;
+  if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){ cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr); }
+  const x=cv.getContext("2d"); x.setTransform(dpr,0,0,dpr,0,0);
+  x.fillStyle="#0a0d12"; x.fillRect(0,0,W,H);
+  if(c.length<2){ x.fillStyle="#8b949e"; x.fillText("No data — load CSV or fetch live.",12,24); return; }
+  const vis=c.slice(-CONFIG.visCandles), n=vis.length;
+  const padR=64,padT=8,padB=18;
+  const plotW=W-padR, plotH=pH-padT-padB;
+  let lo=Infinity,hi=-Infinity;
+  for(const k of vis){ lo=Math.min(lo,k.l); hi=Math.max(hi,k.h); }
+  if(state.position){ lo=Math.min(lo,state.position.sl,state.position.tp); hi=Math.max(hi,state.position.sl,state.position.tp); }
+  const pad=(hi-lo)*0.04||1; lo-=pad; hi+=pad;
+  const Y=p=>padT+(hi-p)/(hi-lo)*plotH;
+  const X=i=>i*(plotW/n)+plotW/n/2;
+  const cw=Math.max(1.5,plotW/n*0.62);
+  // kill-zone shading (when filter is on, show what the bot sees)
+  if(state.settings.kzFilter){
+    x.fillStyle="rgba(88,166,255,0.055)";
+    vis.forEach((k,i)=>{ if(inKillzone(k.t)) x.fillRect(X(i)-plotW/n/2,padT,plotW/n+0.5,plotH); });
+  }
+  // premium / discount shading + EQ
+  if(state.rangeHigh>state.rangeLow){
+    const eq=(state.rangeHigh+state.rangeLow)/2;
+    x.fillStyle="rgba(248,81,73,0.05)";  x.fillRect(0,Y(state.rangeHigh),plotW,Y(eq)-Y(state.rangeHigh));
+    x.fillStyle="rgba(63,185,80,0.05)";  x.fillRect(0,Y(eq),plotW,Y(state.rangeLow)-Y(eq));
+    x.strokeStyle="rgba(210,153,34,0.7)"; x.setLineDash([4,4]); x.beginPath();
+    x.moveTo(0,Y(eq)); x.lineTo(plotW,Y(eq)); x.stroke(); x.setLineDash([]);
+    x.fillStyle="rgba(210,153,34,0.9)"; x.font="10px "+getComputedStyle(document.body).getPropertyValue("--mono");
+    x.fillText("EQ "+fmtPx(eq),6,Y(eq)-3);
+  }
+  // FVG boxes
+  const t0=vis[0].t;
+  const zx=t=>Math.max(0,(t-t0)/(vis[n-1].t-vis[0].t)*plotW);
+  for(const z of state.activeFVGs){
+    if(z.t<vis[0].t) continue;
+    x.fillStyle=z.dir>0?"rgba(63,185,80,0.14)":"rgba(248,81,73,0.14)";
+    x.fillRect(zx(z.t),Y(z.top),plotW-zx(z.t),Math.max(1,Y(z.bot)-Y(z.top)));
+  }
+  for(const o of state.activeOBs){
+    if(o.t<vis[0].t) continue;
+    x.fillStyle=o.dir>0?"rgba(88,166,255,0.15)":"rgba(210,153,34,0.15)";
+    x.fillRect(zx(o.t),Y(o.top),plotW-zx(o.t),Math.max(1,Y(o.bot)-Y(o.top)));
+  }
+  // candles
+  vis.forEach((k,i)=>{
+    const up=k.c>=k.o;
+    x.strokeStyle=x.fillStyle=up?"#3fb950":"#f85149";
+    x.beginPath(); x.moveTo(X(i),Y(k.h)); x.lineTo(X(i),Y(k.l)); x.stroke();
+    const yo=Y(Math.max(k.o,k.c)), hgt=Math.max(1,Math.abs(Y(k.c)-Y(k.o)));
+    x.fillRect(X(i)-cw/2,yo,cw,hgt);
+  });
+  // EMA50
+  const closes=c.map(k=>k.c), e=ema(closes,50).slice(-n);
+  x.strokeStyle="rgba(210,153,34,0.85)"; x.lineWidth=1.2; x.beginPath();
+  e.forEach((v,i)=>{ i?x.lineTo(X(i),Y(v)):x.moveTo(X(i),Y(v)); }); x.stroke(); x.lineWidth=1;
+  // swing pivots & sweeps
+  x.fillStyle="rgba(139,148,158,0.9)";
+  state.pivots.slice(-14).forEach(p=>{
+    if(p.t<t0) return;
+    const i=Math.round((p.t-t0)/((vis[n-1].t-vis[0].t)/(n-1)));
+    if(i>=0&&i<n){ x.beginPath(); x.arc(X(i),Y(p.price),2,0,7); x.fill(); }
+  });
+  x.font="11px "+getComputedStyle(document.body).getPropertyValue("--mono");
+  state.sweeps.slice(-6).forEach(s=>{
+    if(s.t<t0) return;
+    const i=Math.round((s.t-t0)/((vis[n-1].t-vis[0].t)/(n-1)));
+    if(i<0||i>=n) return;
+    x.fillStyle=s.dir>0?"#7ee787":"#ff8f8a";
+    x.fillText(s.dir>0?"▲":"▼",X(i)-4,Y(s.price)+(s.dir>0?14:-6));
+  });
+  // open position lines
+  const label=(txt,yy,color)=>{ x.fillStyle=color; x.fillText(txt,plotW+4,yy+3); };
+  if(state.position){
+    const p=state.position;
+    const line=(price,color,dash)=>{ x.strokeStyle=color; x.setLineDash(dash); x.beginPath(); x.moveTo(0,Y(price)); x.lineTo(plotW,Y(price)); x.stroke(); x.setLineDash([]); };
+    line(p.entry,"#d6dce4",[2,3]); line(p.sl,"#f85149",[]); line(p.tp,"#3fb950",[]);
+    label("E "+fmtPx(p.entry),Y(p.entry),"#d6dce4");
+    label("SL",Y(p.sl),"#f85149"); label("TP",Y(p.tp),"#3fb950");
+  }
+  // last price + right axis
+  const lp=vis[n-1].c;
+  x.strokeStyle="rgba(214,220,228,0.35)"; x.setLineDash([2,3]); x.beginPath();
+  x.moveTo(0,Y(lp)); x.lineTo(plotW,Y(lp)); x.stroke(); x.setLineDash([]);
+  x.fillStyle="#e3b341"; label(fmtPx(lp),Y(lp),"#e3b341");
+  // axis ticks
+  x.fillStyle="#8b949e";
+  for(let g=0;g<=4;g++){ const p=lo+(hi-lo)*g/4; x.fillText(fmtPx(p),plotW+4,Y(p)+3); }
+  // ---- volume delta pane ----
+  const py0=pH+6, ph=H-py0-2;
+  x.strokeStyle="#21262d"; x.beginPath(); x.moveTo(0,pH); x.lineTo(W,pH); x.stroke();
+  let md=1e-9; for(const k of vis) md=Math.max(md,Math.abs(k.delta));
+  const YD=d=>py0+ph/2-(d/md)*(ph/2-2);
+  x.strokeStyle="#21262d"; x.beginPath(); x.moveTo(0,YD(0)); x.lineTo(plotW,YD(0)); x.stroke();
+  vis.forEach((k,i)=>{
+    x.fillStyle=k.delta>=0?"rgba(63,185,80,0.75)":"rgba(248,81,73,0.75)";
+    const y0=YD(0),y1=YD(k.delta);
+    x.fillRect(X(i)-cw/2,Math.min(y0,y1),cw,Math.max(1,Math.abs(y1-y0)));
+  });
+  x.strokeStyle="#58a6ff"; x.lineWidth=1.2; x.beginPath();
+  vis.forEach((k,i)=>{ const yy=py0+ph/2-(k.cvd/(md*n*0.7))*(ph/2-2); i?x.lineTo(X(i),yy):x.moveTo(X(i),yy); });
+  x.stroke(); x.lineWidth=1;
+  x.fillStyle="#8b949e"; x.font="10px "+getComputedStyle(document.body).getPropertyValue("--mono");
+  x.fillText("Δ volume bars + CVD (blue)",6,pH+16);
+  $("chartInfo").textContent=`${n} candles · ${state.settings.tf} · ATR14 ${state.atr.toFixed(2)}`;
+}
+function drawEquity(){
+  const cv=$("eqchart"), dpr=window.devicePixelRatio||1;
+  const W=cv.clientWidth||360,H=150;
+  if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){ cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr); }
+  const x=cv.getContext("2d"); x.setTransform(dpr,0,0,dpr,0,0);
+  x.fillStyle="#0a0d12"; x.fillRect(0,0,W,H);
+  const pts=[{t:Date.now(),eq:state.startBalance},...state.equity];
+  if(pts.length<2){ x.fillStyle="#8b949e"; x.font="11px monospace"; x.fillText("Equity curve appears after the first closed trade.",12,24); return; }
+  let lo=Math.min(...pts.map(p=>p.eq)),hi=Math.max(...pts.map(p=>p.eq));
+  const pad=(hi-lo)*0.12||50; lo-=pad; hi+=pad;
+  const X=i=>8+i*(W-60)/(pts.length-1), Y=v=>10+(hi-v)/(hi-lo)*(H-30);
+  x.strokeStyle="#2d333b"; x.setLineDash([3,3]); x.beginPath();
+  x.moveTo(8,Y(state.startBalance)); x.lineTo(W-52,Y(state.startBalance)); x.stroke(); x.setLineDash([]);
+  const last=pts[pts.length-1].eq, up=last>=state.startBalance;
+  x.strokeStyle=up?"#3fb950":"#f85149"; x.fillStyle=up?"rgba(63,185,80,0.12)":"rgba(248,81,73,0.12)";
+  x.beginPath(); pts.forEach((p,i)=>{ i?x.lineTo(X(i),Y(p.eq)):x.moveTo(X(i),Y(p.eq)); });
+  x.stroke(); x.lineTo(X(pts.length-1),H-20); x.lineTo(X(0),H-20); x.closePath(); x.fill();
+  x.fillStyle=up?"#3fb950":"#f85149"; x.font="11px "+getComputedStyle(document.body).getPropertyValue("--mono");
+  x.fillText(fmtUSD(last),W-52,Y(last)+3);
+  x.fillStyle="#8b949e"; x.fillText("start "+fmtUSD(state.startBalance),8,H-6);
+  $("eqInfo").textContent=`${state.trades.filter(t=>t.status==="CLOSED").length} closed trades`;
+}
+function renderAll(){ renderStatus(); renderDashboard(); renderLevels(); renderFlow(); renderTrades(); drawChart(); drawEquity(); }
+
+/* ============ 12. CONTROLS & EVENTS ============ */
+function startBot(){
+  if(state.running) return;
+  if(state.mode==="LIVE"&&!state.candles.length){ fetchLive(); }
+  state.running=true;
+  stopTimer();
+  state.pollTimer=setInterval(pollTick,Math.min(60,Math.max(15,state.settings.pollSec))*1000);
+  log(`Bot started (${state.mode==="CSV"?"CSV replay every "+state.settings.pollSec+"s":"live poll every "+state.settings.pollSec+"s"}).`,"ok");
+  renderAll();
+}
+function pauseBot(){
+  state.running=false; stopTimer();
+  log("Bot paused.","warn"); renderAll();
+}
+function stopTimer(){ if(state.pollTimer){ clearInterval(state.pollTimer); state.pollTimer=null; } }
+function resetAccount(){
+  if(!confirm("Reset account to starting balance and clear all paper trades?")) return;
+  state.balance=state.startBalance; state.trades=[]; state.equity=[]; state.position=null; state.lastTradeTime=0;
+  log(`Account reset to ${fmtUSD(state.startBalance)}.`,"warn");
+  saveState(); renderAll();
+}
+function wireEvents(){
+  $("btnStart").onclick=startBot;
+  $("btnPause").onclick=pauseBot;
+  $("btnReset").onclick=resetAccount;
+  $("btnStep").onclick=()=>stepCsv(1);
+  $("btnFF").onclick=()=>stepCsv(50);
+  $("btnKz").onclick=()=>{ state.settings.kzFilter=!state.settings.kzFilter; log("Kill-zone filter "+(state.settings.kzFilter?"ON (London 07–10, NY 12–15 UTC)":"OFF — trading all sessions."),"info"); saveState(); renderAll(); };
+  $("btnFetch").onclick=()=>fetchLive();
+  $("btnCsv").onclick=()=>{
+    try{ loadCsvMode(parseCsv($("inCsv").value),"pasted CSV"); }
+    catch(e){ log("CSV error: "+e.message,"err"); }
+  };
+  $("btnDemo").onclick=()=>{ try{ loadCsvMode(parseCsv(buildDemoCsv()),"built-in demo dataset"); }catch(e){ log("Demo data error: "+e.message,"err"); } };
+  $("btnLiveMode").onclick=()=>{ state.mode="LIVE"; state.csvQueue=[]; state.csvCursor=0; state.candles=[]; state.lastEvalT=0; log("Switched to LIVE data mode — enter API key and press Start.","info"); renderAll(); };
+  $("inKey").oninput=e=>{ state.settings.apiKey=e.target.value.trim(); saveState(); };
+  $("inTf").onchange=e=>{ state.settings.tf=e.target.value; saveState(); renderAll(); };
+  $("inPoll").onchange=e=>{
+    let v=Math.min(60,Math.max(15,+e.target.value||30)); e.target.value=v;
+    state.settings.pollSec=v; saveState();
+    if(state.running){ pauseBot(); startBot(); }  // restart timer with the new interval
+  };
+  $("inBalance").onchange=e=>{ state.startBalance=Math.max(100,+e.target.value||10000); e.target.value=state.startBalance; saveState(); renderAll(); };
+  $("inTz").onchange=e=>{ state.settings.csvTz=+e.target.value||0; saveState(); };
+  window.addEventListener("resize",()=>{ drawChart(); drawEquity(); });
+}
+
+/* ============ 13. SELF-TEST (?selftest=1) ============ */
+// Deterministic synthetic 15m series: drift up → dump (bearish BOS) → flat
+// base → rally (bullish CHoCH + FVG stack) → pullback into discount → green
+// +Δ retest of a surviving FVG → rally to TP. Exercises the full pipeline.
+function buildDemoCsv(){
+  // Hand-verified geometry. Frame: prices relative to the C-leg final close (0).
+  // Legs C–F and the base are exact ramps; wig noise only in A/B and base.
+  //   A  50 candles drift +0.06 ± wig  → swing pivots
+  //   B  10 candles roll −0.10 ± wig   → swing high; ends +6.40 (C drops 8×0.80)
+  //   C   8 candles dump −0.80         → ends 0 (frame origin), bearish BOS,
+  //      low −0.10; C8 is the last confirmed swing low
+  //   —  100-candle flat base at 0 ± wig·0.15 (lows ≥ −0.31, highs ≤ +0.31):
+  //      pushes C out of the 96-candle dealing-range window; no FVGs (gaps
+  //      < 0.15); closes never ≤ −0.10 so the bearish bias survives the base
+  //   D  10 candles rally +0.80        → ends +8.00; D1 close 0.80 breaks the
+  //      base swing high (~+0.31) → bullish CHoCH at D1; FVG k=[0.8(k−2)+0.05,
+  //      0.8k−0.10] (mid 0.8k−0.825); longs blocked through D by premium
+  //   E   9 candles pullback −0.60     → ends +2.60 (E9 low 2.50); mitigates
+  //      FVGs k≥5 (E1–E6 lows 7.30→4.30 sweep mids 7.175→3.175); spares k=3,4
+  //   R   retest o=2.65 h=3.00 l=2.20 c=2.80 → green, Δ=+750, overlaps FVG k=3
+  //      [0.85,2.30] (low 2.20 > mid 1.575 so the zone survives R); close at
+  //      ~37% of range [−0.31, 8.05] = discount → LONG
+  //      Protected swing = min(zone bot, lows since CHoCH) = D1 low 0.70 →
+  //      SL 0.40, stop 2.40, TP 5.20, lots = 100/(2.40·100) → 0.42
+  //   F  26 candles rally +0.60        → F4 high 5.25 ≥ TP 5.20 → TP close
+  // Start time chosen so R lands at 12:45 UTC (NY kill zone).
+  const rows=[]; let t=Date.UTC(2025,5,2,14,0,0), p=2330, i=0;
+  const put=(o,h,l,c,v)=>{
+    rows.push(`${new Date(t).toISOString().slice(0,16).replace("T"," ")},${o.toFixed(2)},${h.toFixed(2)},${l.toFixed(2)},${c.toFixed(2)},${v}`);
+    t+=15*60e3; i++;
+  };
+  const wig=j=>Math.sin(j*0.9)*0.35+Math.cos(j*0.37)*0.22;
+  const leg=(n,drift,amp,vol)=>{ for(let k=0;k<n;k++){ const c=p+drift+wig(i)*amp;
+    put(p,Math.max(p,c)+0.22,Math.min(p,c)-0.22,c,vol+Math.round(Math.abs(wig(i))*300)); p=c; } };
+  const ramp=(n,step,wt,wb,vol)=>{ for(let k=0;k<n;k++){ const c=p+step;
+    put(p,Math.max(p,c)+wt,Math.min(p,c)-wb,c,vol); p=c; } };
+  leg(50,+0.06,0.25,900);        // A · pivot-rich uptrend
+  leg(10,-0.10,0.30,850);        // B · roll over (swing high forms)
+  ramp(8,-0.80,0.05,0.10,1400);  // C · dump → bearish BOS (frame origin = C-end)
+  leg(100,0,0.15,800);           // flat base → C leaves the range window
+  ramp(10,+0.80,0.05,0.10,1600); // D · rally → bullish CHoCH at D1 + FVG stack
+  ramp(9,-0.60,0.05,0.10,1200);  // E · pullback → mitigates FVGs k≥5, spares k=3,4
+  put(p+0.05,p+0.40,p-0.40,p+0.20,1500); // R · green +Δ retest inside FVG k=3, discount
+  ramp(26,+0.60,0.05,0.05,1300); // F · rally → TP hit at F4
+  return "time,open,high,low,close,volume\n"+rows.join("\n");
+}
+function selftest(){
+  // snapshot user state so the test never pollutes the saved account
+  const snap=JSON.parse(JSON.stringify({mode:state.mode,candles:state.candles,csvQueue:state.csvQueue,
+    csvCursor:state.csvCursor,lastEvalT:state.lastEvalT,balance:state.balance,startBalance:state.startBalance,
+    trades:state.trades,equity:state.equity,position:state.position,lastTradeTime:state.lastTradeTime,
+    kz:state.settings.kzFilter}));
+  const out=[]; const ok=(name,cond,extra)=>out.push(`${cond?"PASS":"FAIL"} — ${name}${extra?" · "+extra:""}`);
+  try{
+    const list=parseCsv(buildDemoCsv());
+    ok("CSV parse",list.length>100,list.length+" candles");
+    // replay step-by-step from a 70-candle warm-up, like a real session
+    state.mode="CSV"; state.csvQueue=list; state.csvCursor=78; // warm-up: A+B+C + first base candles (before the signal region)
+    state.candles=list.slice(0,78).map(k=>({...k})); state.lastEvalT=0;
+    state.settings.kzFilter=false; // test the pure strategy logic first
+    state.balance=10000; state.startBalance=10000; state.trades=[]; state.equity=[];
+    state.position=null; state.lastTradeTime=0;
+    evaluate();
+    ok("swings detected",state.pivots.length>5,state.pivots.length+" pivots");
+    ok("structure events",state.events.length>0,state.events.map(e=>e.kind).join(","));
+    ok("bias resolved",state.bias!==0,"bias="+(state.bias>0?"bull":state.bias<0?"bear":"neutral"));
+    let guard=0;
+    while(!state.position&&state.csvCursor<state.csvQueue.length&&guard++<200) stepCsv(1);
+    if(state.position){
+      const p=state.position;
+      ok("entry fired",true,p.reason);
+      const stopDist=Math.abs(p.entry-p.sl);
+      const lots=state.balance*CONFIG.riskPct/(stopDist*100);
+      ok("position sizing matches 1% formula",Math.abs(p.lots-Math.max(0.01,Math.round(lots*100)/100))<0.011,`lots=${p.lots} expected≈${lots.toFixed(3)}`);
+      ok("RR exactly 1:1",Math.abs(Math.abs(p.tp-p.entry)-stopDist)<1e-6,`TP dist=${Math.abs(p.tp-p.entry).toFixed(2)} SL dist=${stopDist.toFixed(2)}`);
+      ok("SL beyond protected zone",p.dir>0?p.sl<p.entry:p.sl>p.entry);
+      ok("single position engine",state.trades.length===1,state.trades.length+" trades");
+      guard=0;
+      while(state.position&&state.csvCursor<state.csvQueue.length&&guard++<200) stepCsv(1);
+      const closedTr=state.trades.filter(t=>t.status==="CLOSED");
+      if(closedTr.length){
+        const tr=closedTr[0];
+        ok("trade closed",tr.outcome==="TP",`exit=${fmtPx(tr.exit)} outcome=${tr.outcome}`);
+        ok("P&L = stop distance × oz",Math.abs(Math.abs(tr.pnl)-Math.abs(tr.exit-tr.entry)*tr.oz)<1e-6,`pnl=${tr.pnl.toFixed(2)}`);
+        ok("risk ≈ 1% of balance",Math.abs(Math.abs(tr.pnl)-state.startBalance*CONFIG.riskPct)<=Math.max(1,state.startBalance*CONFIG.riskPct*0.1),`|pnl|=${Math.abs(tr.pnl).toFixed(2)} target=${(state.startBalance*CONFIG.riskPct).toFixed(2)}`);
+        ok("equity curve updated",state.equity.length>=1,state.equity.length+" points");
+      } else ok("trade closed",false,"position still open after replay end");
+    } else {
+      const cd=state.candles[state.candles.length-1];
+      ok("entry fired",false,`bias=${state.bias} shift=${state.lastShift?state.lastShift.kind+"@"+iso(state.lastShift.t):"none"} `+
+        `FVGs=${state.activeFVGs.length} OBs=${state.activeOBs.length} Δ=${cd?cd.delta.toFixed(0):"—"} candles=${state.candles.length}/${state.csvQueue.length}`);
+    }
+    // unit: SL and TP touched inside one candle → conservative loss
+    state.position=null; state.trades=[]; state.balance=10000; state.equity=[];
+    const fake={t:Date.now(),o:100,h:110,l:90,c:105,v:1000,delta:100,cvd:0};
+    state.candles=[fake]; state.lastEvalT=Date.now(); state.atr=1;
+    const pos={dir:1,entry:100,sl:99,tp:101,oz:100,openTime:fake.t-1,reason:"unit test",openedAt:0};
+    state.position=pos;
+    state.trades=[{...pos,status:"OPEN",exit:null,pnl:0,outcome:"",closedAt:0}];
+    processExits([fake]);
+    const tr=state.trades[0];
+    ok("same-candle SL+TP counted as loss",!!tr&&tr.pnl<0&&/both/i.test(tr.outcome),tr?`outcome="${tr.outcome}" pnl=${tr.pnl}`:"no close");
+  }catch(e){ out.push("FAIL — exception: "+(e&&e.stack?String(e.stack).split("\n")[0]:e.message)); }
+  const allPass=out.every(o=>o.startsWith("PASS"));
+  console.log("%c[SELFTEST "+(allPass?"PASSED":"FAILED")+"]","font-weight:bold;color:"+(allPass?"#3fb950":"#f85149"));
+  out.forEach(o=>console.log("  "+o));
+  Object.assign(state,snap); state.settings.kzFilter=snap.kz;
+  saveState(); renderAll();
+  log("Self-test "+(allPass?"PASSED":"FAILED")+" — details in browser console (F12).",allPass?"ok":"err");
+  window.__SELFTEST={pass:allPass,results:out};
+  return window.__SELFTEST;
+}
+
+/* ============ 14. INIT ============ */
+function init(){
+  loadState();
+  $("inKey").value=state.settings.apiKey;
+  $("inTf").value=state.settings.tf;
+  $("inPoll").value=state.settings.pollSec;
+  $("inBalance").value=state.startBalance;
+  $("inTz").value=state.settings.csvTz;
+  wireEvents();
+  log("Paper bot ready. Load demo data, paste a TradingView CSV, or enter a Twelve Data key and press Start.","info");
+  renderAll();
+  if(new URLSearchParams(location.search).get("selftest")==="1") setTimeout(selftest,50);
+}
+document.readyState==="loading"?document.addEventListener("DOMContentLoaded",init):init();
+</script>
+
+<script>
+/* Cloud runner hook: the server supplies API key/settings through localStorage. */
+(function(){
+  if(new URLSearchParams(location.search).get("server") !== "1") return;
+  const boot = () => {
+    try {
+      // init() has already restored localStorage by the time this runs.
+      if(typeof startBot === "function" && !state.running) startBot();
+    } catch(e) {
+      console.error("Cloud auto-start failed:", e);
+    }
+  };
+  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => setTimeout(boot, 500));
+  else setTimeout(boot, 500);
+})();
+</script>
+
+</body>
+</html>
